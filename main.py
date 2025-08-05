@@ -85,3 +85,7 @@ def run_agent(task_id: str, req: TaskRequest):
 
     except Exception as e:
         tasks[task_id] = {"status": "failed", "result": str(e)}
+
+@app.get("/")
+def health_check():
+    return {"status": "ok"}
