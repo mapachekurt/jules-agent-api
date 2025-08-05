@@ -73,13 +73,27 @@ uvicorn main:app --reload
 
 ---
 
-## 📦 Deployment
+## 🧪 Testing
 
-Use Railway:
+Run the comprehensive test suite:
 
-1. Connect this repo
-2. Set your `GITHUB_TOKEN` in the Variables tab
-3. Deploy 🚀
+```bash
+# Python comprehensive tests
+python tests/test_api.py
+
+# PowerShell quick test
+.\tests\test_live.ps1
+
+# Diagnostic test
+python tests/diagnostic_test.py
+```
+
+## 🚀 READY FOR N8N INTEGRATION
+
+The Jules Agent API is now fully compatible with n8n automations and workflows. For detailed integration instructions, see `TEST_RESULTS.md`. The current live API endpoint can be accessed at:
+```
+https://jules-agent-api-production.up.railway.app
+```
 
 ---
 
