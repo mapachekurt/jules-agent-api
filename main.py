@@ -54,6 +54,7 @@ def get_result(task_id: str):
     }
 
 def run_agent(task_id: str, req: TaskRequest):
+    print(f"[AGENT DEBUG] run_agent called for task {task_id}")
     tasks = load_tasks()
     try:
         print(f"[AGENT] Starting task: {task_id}")
