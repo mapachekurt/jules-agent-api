@@ -40,12 +40,15 @@ def get_result(task_id: str):
 
 def run_agent(task_id: str, req: TaskRequest):
     try:
+        print(f"[AGENT] Starting task: {task_id}")
+
         github_token = os.getenv("GITHUB_TOKEN")
         if not github_token:
             raise EnvironmentError("GITHUB_TOKEN is not set")
 
         repo_dir = f"/tmp/repo_{task_id}"
         os.makedirs(repo_dir, exist_ok=True)
+        print(f"[AGENT] Cloning into {repo_dir}")
 
         repo_url = req.github_repo_url.replace("https://", f"https://{github_token}@")
         subprocess.run(["git", "clone", repo_url, repo_dir], check=True)
@@ -54,21 +57,22 @@ def run_agent(task_id: str, req: TaskRequest):
         new_branch = f"jules-agent-{task_id[:8]}"
         subprocess.run(["git", "checkout", "-b", new_branch], cwd=repo_dir, check=True)
 
-        # Simulate file change (agent logic placeholder)
+        print(f"[AGENT] Modifying README.md")
         with open(os.path.join(repo_dir, "README.md"), "a") as f:
             f.write(f"\n\n# Agent Change: {req.prompt}\n")
 
-        # Run tests if specified
         if req.test_command:
+            print(f"[AGENT] Running tests: {req.test_command}")
             test_result = subprocess.run(req.test_command.split(), cwd=repo_dir)
             if test_result.returncode != 0:
                 raise RuntimeError("Tests failed. Aborting push.")
 
+        print(f"[AGENT] Committing changes")
         subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
         subprocess.run(["git", "commit", "-m", f"Agent: {req.prompt}"], cwd=repo_dir, check=True)
         subprocess.run(["git", "push", "origin", new_branch], cwd=repo_dir, check=True)
 
-        # Create Pull Request
+        print(f"[AGENT] Creating PR")
         owner_repo = req.github_repo_url.rstrip(".git").split("github.com/")[-1]
         pr_data = {
             "title": f"Agent PR: {req.prompt[:50]}",
@@ -89,6 +93,7 @@ def run_agent(task_id: str, req: TaskRequest):
         }
 
     except Exception as e:
+        print(f"[AGENT ERROR] Task {task_id} failed: {str(e)}")
         tasks[task_id] = {"status": "failed", "result": str(e)}
 
 @app.get("/")
