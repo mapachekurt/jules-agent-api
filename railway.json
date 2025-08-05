@@ -1,0 +1,12 @@
+{
+  "build": {
+    "env": {
+      "GITHUB_TOKEN": {
+        "required": true
+      }
+    }
+  },
+  "deploy": {
+    "startCommand": "uvicorn main:app --host 0.0.0.0 --port 8000"
+  }
+}
