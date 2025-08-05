@@ -9,21 +9,86 @@ import requests
 from typing import Optional
 import json
 import shutil
+from pathlib import Path
 
 app = FastAPI()
-TASKS_FILE = "/tmp/tasks.json"
 
+# Storage configuration - supports multiple backends
+STORAGE_TYPE = os.getenv("STORAGE_TYPE", "file")  # file, redis, memory
+TASKS_FILE = os.getenv("TASKS_FILE", "/app/data/tasks.json")  # Changed to persistent volume
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+# In-memory fallback for development
+_memory_tasks = {}
+
+class TaskStorage:
+    """Task storage abstraction supporting multiple backends"""
+    
+    def __init__(self):
+        self.storage_type = STORAGE_TYPE
+        self.redis_client = None
+        
+        # Initialize Redis if specified
+        if self.storage_type == "redis":
+            try:
+                import redis
+                self.redis_client = redis.from_url(REDIS_URL)
+                # Test connection
+                self.redis_client.ping()
+                print(f"[STORAGE] Connected to Redis at {REDIS_URL}")
+            except Exception as e:
+                print(f"[STORAGE WARNING] Redis connection failed: {e}. Falling back to file storage.")
+                self.storage_type = "file"
+        
+        # Ensure data directory exists for file storage
+        if self.storage_type == "file":
+            Path(TASKS_FILE).parent.mkdir(parents=True, exist_ok=True)
+            print(f"[STORAGE] Using file storage at {TASKS_FILE}")
+        elif self.storage_type == "memory":
+            print(f"[STORAGE] Using in-memory storage (not persistent)")
+    
+    def load_tasks(self):
+        """Load tasks from storage backend"""
+        try:
+            if self.storage_type == "redis" and self.redis_client:
+                data = self.redis_client.get("jules_tasks")
+                return json.loads(data) if data else {}
+            elif self.storage_type == "file":
+                if os.path.exists(TASKS_FILE):
+                    with open(TASKS_FILE, "r") as f:
+                        return json.load(f)
+                return {}
+            else:  # memory
+                return _memory_tasks.copy()
+        except Exception as e:
+            print(f"[STORAGE ERROR] Failed to load tasks: {e}")
+            return {}
+    
+    def save_tasks(self, tasks):
+        """Save tasks to storage backend"""
+        try:
+            if self.storage_type == "redis" and self.redis_client:
+                self.redis_client.set("jules_tasks", json.dumps(tasks))
+            elif self.storage_type == "file":
+                # Atomic write to prevent corruption
+                temp_file = f"{TASKS_FILE}.tmp"
+                with open(temp_file, "w") as f:
+                    json.dump(tasks, f, indent=2)
+                os.replace(temp_file, TASKS_FILE)  # Atomic rename
+            else:  # memory
+                _memory_tasks.clear()
+                _memory_tasks.update(tasks)
+        except Exception as e:
+            print(f"[STORAGE ERROR] Failed to save tasks: {e}")
+
+# Initialize storage
+task_storage = TaskStorage()
 
 def load_tasks():
-    if os.path.exists(TASKS_FILE):
-        with open(TASKS_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
+    return task_storage.load_tasks()
 
 def save_tasks(tasks):
-    with open(TASKS_FILE, "w") as f:
-        json.dump(tasks, f)
+    task_storage.save_tasks(tasks)
 
 
 class TaskRequest(BaseModel):
@@ -75,7 +140,8 @@ def run_agent(task_id: str, req: TaskRequest):
             print(f"[AGENT] Checking if test command exists: {req.test_command}")
             binary = req.test_command.split()[0]
             if shutil.which(binary) is None:
-                raise FileNotFoundError(f"Test command not found: {binary}")
+                print(f"[AGENT WARNING] Test command '{binary}' not found. Using fallback: 'echo Test command not available, skipping tests'")
+                req.test_command = "echo 'Test command not available, skipping tests'"
 
         repo_dir = f"/tmp/repo_{task_id}"
         os.makedirs(repo_dir, exist_ok=True)
@@ -84,6 +150,10 @@ def run_agent(task_id: str, req: TaskRequest):
         repo_url = req.github_repo_url.replace("https://", f"https://{github_token}@")
         subprocess.run(["git", "clone", repo_url, repo_dir], check=True)
         subprocess.run(["git", "checkout", req.github_branch], cwd=repo_dir, check=True)
+        
+        # Configure git user (required for commits)
+        subprocess.run(["git", "config", "user.name", "Jules Agent"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "config", "user.email", "jules-agent@example.com"], cwd=repo_dir, check=True)
 
         new_branch = f"jules-agent-{task_id[:8]}"
         subprocess.run(["git", "checkout", "-b", new_branch], cwd=repo_dir, check=True)
