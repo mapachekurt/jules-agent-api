@@ -7,9 +7,20 @@ import subprocess
 import os
 import requests
 from typing import Optional
+import json
 
 app = FastAPI()
-tasks = {}
+TASKS_FILE = "/tmp/tasks.json"
+
+def load_tasks():
+    if os.path.exists(TASKS_FILE):
+        with open(TASKS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_tasks(tasks):
+    with open(TASKS_FILE, "w") as f:
+        json.dump(tasks, f)
 
 class TaskRequest(BaseModel):
     prompt: str
@@ -20,16 +31,20 @@ class TaskRequest(BaseModel):
 @app.post("/start-task")
 def start_task(req: TaskRequest, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
+    tasks = load_tasks()
     tasks[task_id] = {"status": "running", "result": None}
+    save_tasks(tasks)
     background_tasks.add_task(run_agent, task_id, req)
     return {"task_id": task_id}
 
 @app.get("/task-status/{task_id}")
 def get_status(task_id: str):
+    tasks = load_tasks()
     return tasks.get(task_id, {"status": "unknown"})
 
 @app.get("/task-result/{task_id}")
 def get_result(task_id: str):
+    tasks = load_tasks()
     task = tasks.get(task_id)
     if not task:
         return {"status": "unknown", "result": None}
@@ -39,6 +54,7 @@ def get_result(task_id: str):
     }
 
 def run_agent(task_id: str, req: TaskRequest):
+    tasks = load_tasks()
     try:
         print(f"[AGENT] Starting task: {task_id}")
 
@@ -95,6 +111,8 @@ def run_agent(task_id: str, req: TaskRequest):
     except Exception as e:
         print(f"[AGENT ERROR] Task {task_id} failed: {str(e)}")
         tasks[task_id] = {"status": "failed", "result": str(e)}
+
+    save_tasks(tasks)
 
 @app.get("/")
 def health_check():
