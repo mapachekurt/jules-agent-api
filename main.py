@@ -8,9 +8,11 @@ import os
 import requests
 from typing import Optional
 import json
+import shutil
 
 app = FastAPI()
 TASKS_FILE = "/tmp/tasks.json"
+
 
 def load_tasks():
     if os.path.exists(TASKS_FILE):
@@ -18,15 +20,18 @@ def load_tasks():
             return json.load(f)
     return {}
 
+
 def save_tasks(tasks):
     with open(TASKS_FILE, "w") as f:
         json.dump(tasks, f)
+
 
 class TaskRequest(BaseModel):
     prompt: str
     github_repo_url: str
     github_branch: Optional[str] = "main"
     test_command: Optional[str] = None  # e.g., "pytest" or "npm test"
+
 
 @app.post("/start-task")
 def start_task(req: TaskRequest, background_tasks: BackgroundTasks):
@@ -37,10 +42,12 @@ def start_task(req: TaskRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_agent, task_id, req)
     return {"task_id": task_id}
 
+
 @app.get("/task-status/{task_id}")
 def get_status(task_id: str):
     tasks = load_tasks()
     return tasks.get(task_id, {"status": "unknown"})
+
 
 @app.get("/task-result/{task_id}")
 def get_result(task_id: str):
@@ -53,6 +60,7 @@ def get_result(task_id: str):
         "result": task["result"]
     }
 
+
 def run_agent(task_id: str, req: TaskRequest):
     print(f"[AGENT DEBUG] run_agent called for task {task_id}")
     tasks = load_tasks()
@@ -62,6 +70,12 @@ def run_agent(task_id: str, req: TaskRequest):
         github_token = os.getenv("GITHUB_TOKEN")
         if not github_token:
             raise EnvironmentError("GITHUB_TOKEN is not set")
+
+        if req.test_command:
+            print(f"[AGENT] Checking if test command exists: {req.test_command}")
+            binary = req.test_command.split()[0]
+            if shutil.which(binary) is None:
+                raise FileNotFoundError(f"Test command not found: {binary}")
 
         repo_dir = f"/tmp/repo_{task_id}"
         os.makedirs(repo_dir, exist_ok=True)
@@ -115,9 +129,11 @@ def run_agent(task_id: str, req: TaskRequest):
 
     save_tasks(tasks)
 
+
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
 
 if __name__ == "__main__":
     import uvicorn
