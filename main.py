@@ -1,5 +1,4 @@
 # Jules-Style Agent API (FastAPI Wrapper)
-# testing comment
 
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
@@ -52,9 +51,11 @@ def run_agent(task_id: str, req: TaskRequest):
         new_branch = f"jules-agent-{task_id[:8]}"
         subprocess.run(["git", "checkout", "-b", new_branch], cwd=repo_dir, check=True)
 
+        # Simulate file change (agent logic placeholder)
         with open(os.path.join(repo_dir, "README.md"), "a") as f:
             f.write(f"\n\n# Agent Change: {req.prompt}\n")
 
+        # Run tests if specified
         if req.test_command:
             test_result = subprocess.run(req.test_command.split(), cwd=repo_dir)
             if test_result.returncode != 0:
@@ -64,6 +65,7 @@ def run_agent(task_id: str, req: TaskRequest):
         subprocess.run(["git", "commit", "-m", f"Agent: {req.prompt}"], cwd=repo_dir, check=True)
         subprocess.run(["git", "push", "origin", new_branch], cwd=repo_dir, check=True)
 
+        # Create Pull Request
         owner_repo = req.github_repo_url.rstrip(".git").split("github.com/")[-1]
         pr_data = {
             "title": f"Agent PR: {req.prompt[:50]}",
@@ -89,6 +91,7 @@ def run_agent(task_id: str, req: TaskRequest):
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
