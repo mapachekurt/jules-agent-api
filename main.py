@@ -31,9 +31,12 @@ def get_status(task_id: str):
 @app.get("/task-result/{task_id}")
 def get_result(task_id: str):
     task = tasks.get(task_id)
-    if task and task["status"] == "completed":
-        return {"result": task["result"]}
-    return {"status": task["status"]}
+    if not task:
+        return {"status": "unknown", "result": None}
+    return {
+        "status": task["status"],
+        "result": task["result"]
+    }
 
 def run_agent(task_id: str, req: TaskRequest):
     try:
